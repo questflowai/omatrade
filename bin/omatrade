@@ -56,7 +56,7 @@ NEWS_NOTIFY_URGENCY = 1
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
 def http_json(url, body=None, timeout=6):
-    headers = {"Origin": TV_ORIGIN, "User-Agent": "omatrade/0.2.0"}
+    headers = {"Origin": TV_ORIGIN, "User-Agent": "omatrade/0.3.0"}
     data = None
     if body is not None:
         data = json.dumps(body).encode()
