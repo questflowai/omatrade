@@ -296,6 +296,36 @@ def tv_remove(symbol):
     return sections
 
 
+def tv_move(symbol, before=None, after=None, section=None):
+    """Move a symbol next to another one, or to the top of a section. Moving
+    next to a symbol in another section moves it into that section."""
+    sym = symbol.upper()
+    anchor = (before or after or "").upper()
+    sections, _ = tv_sections()
+    if not any(sym in sec["symbols"] for sec in sections):
+        raise SystemExit(f"{sym} is not on the watchlist")
+    for sec in sections:
+        if sym in sec["symbols"]:
+            sec["symbols"].remove(sym)
+    placed = False
+    if anchor:
+        for sec in sections:
+            if anchor in sec["symbols"]:
+                at = sec["symbols"].index(anchor) + (1 if after else 0)
+                sec["symbols"].insert(at, sym)
+                placed = True
+                break
+    elif section is not None:
+        target = next((sec for sec in sections if sec["name"].lower() == section.lower()), None)
+        if target is not None:
+            target["symbols"].insert(0, sym)
+            placed = True
+    if not placed:
+        raise SystemExit("nowhere to move it: give --before/--after a symbol on the list, or a --section")
+    write_tv_list(sections)
+    return sections
+
+
 # ── News ─────────────────────────────────────────────────────────────────────
 #
 # Trading news for what you watch: TradingView's headlines for each symbol on
@@ -747,6 +777,12 @@ def main(argv=None):
     ta.add_argument("--section")
     tr = tv_sub.add_parser("remove", help="remove a symbol")
     tr.add_argument("symbol")
+    tm = tv_sub.add_parser("move", help="reorder: move a symbol before/after another, or to a section's top")
+    tm.add_argument("symbol")
+    where = tm.add_mutually_exclusive_group(required=True)
+    where.add_argument("--before")
+    where.add_argument("--after")
+    where.add_argument("--section")
     to = tv_sub.add_parser("open", help="open a symbol's chart on TradingView")
     to.add_argument("symbol")
 
@@ -818,9 +854,11 @@ def tv_main(args):
         count = sum(len(sec["symbols"]) for sec in sections)
         print(f"imported {count} symbols in {len(sections)} sections from {source}")
         return 0
-    if tv_cmd in ("add", "remove"):
+    if tv_cmd in ("add", "remove", "move"):
         if tv_cmd == "add":
             tv_add(args.symbol, section=args.section)
+        elif tv_cmd == "move":
+            tv_move(args.symbol, before=args.before, after=args.after, section=args.section)
         else:
             tv_remove(args.symbol)
         poke_bar()

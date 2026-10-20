@@ -115,6 +115,48 @@ Item {
     edit.run([root.cli, "tv", "remove", "--", symbol])
   }
 
+  // Reorder: next to another symbol (before or after it), or to the top of a
+  // section. Shown at once, written by the CLI.
+  function moveSymbol(symbol, anchor, after, section) {
+    if (data && data.watchlist) {
+      var copy = JSON.parse(JSON.stringify(data))
+      var sections = copy.watchlist.sections
+      var moving = null
+      for (var s = 0; s < sections.length && !moving; s++) {
+        for (var e = 0; e < sections[s].entries.length; e++) {
+          if (sections[s].entries[e].symbol === symbol) {
+            moving = sections[s].entries.splice(e, 1)[0]
+            break
+          }
+        }
+      }
+      if (!moving) return
+      var placed = false
+      for (s = 0; s < sections.length && !placed; s++) {
+        var entries = sections[s].entries
+        if (anchor) {
+          for (e = 0; e < entries.length; e++) {
+            if (entries[e].symbol === anchor) {
+              entries.splice(e + (after ? 1 : 0), 0, moving)
+              placed = true
+              break
+            }
+          }
+        } else if (sections[s].name === section) {
+          entries.unshift(moving)
+          placed = true
+        }
+      }
+      if (!placed) return
+      copy.watchlist.sections = sections.filter(function (sec) { return sec.entries.length > 0 })
+      data = copy
+    }
+    var command = [root.cli, "tv", "move"]
+    command.push(anchor ? (after ? "--after=" : "--before=") + anchor : "--section=" + section)
+    command.push("--", symbol)
+    edit.run(command)
+  }
+
   function connectQuestflow() { edit.run([root.cli, "login"]) }
   function disconnectQuestflow() { edit.run([root.cli, "logout"]) }
 
