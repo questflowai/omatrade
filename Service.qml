@@ -4,11 +4,13 @@ import Quickshell.Io
 import qs.Commons
 import "Model.js" as Model
 
-// Polling omatrade for the watchlist, the news and the positions.
+// The bar's side of Omatrade: reads the snapshot the daemon writes, and runs
+// the CLI for the few things a person does from the panel.
 //
-// One service for the whole shell, however many monitors have a bar. It is
-// also what notifies: the CLI sends a notification for each breaking story it
-// has not announced before, so a second bar never means a second notification.
+// One service for the whole shell, however many monitors have a bar. It
+// makes no network requests and spawns nothing on a timer: the daemon
+// (`omatrade daemon run`, a systemd user unit) holds the Questflow stream,
+// sends the notifications and rewrites the snapshot; this file watches it.
 Item {
   id: root
 
@@ -19,25 +21,39 @@ Item {
   property string view: "watchlist"
   property bool pendingAdd: false
   property string lastError: ""
-  // The CLI is not on the path: the panel hides rather than reporting an
-  // error nobody can fix from the bar. The next poll that starts clears it.
+  // The CLI could not be started at all: the panel hides rather than
+  // reporting an error nobody can fix from the bar.
   property bool missing: false
   property double updatedAt: 0
-  readonly property bool refreshing: summaryProcess.running
+  readonly property bool refreshing: false
 
   // The CLI that ships inside this plugin, so `omarchy plugin add` is the
   // whole install and nothing has to be on the PATH.
   readonly property string cli: decodeURIComponent(
     String(Qt.resolvedUrl("bin/omatrade")).replace(/^(file|qs):\/\//, ""))
 
+  readonly property string stateHome: {
+    var xdg = Quickshell.env("XDG_STATE_HOME")
+    return xdg ? String(xdg) : String(Quickshell.env("HOME")) + "/.local/state"
+  }
+  readonly property string snapshotPath: stateHome + "/omatrade/state.json"
+
   readonly property var watchlist: data && data.watchlist ? data.watchlist : null
-  readonly property var news: data && data.news ? data.news : null
-  readonly property var questflow: data && data.questflow ? data.questflow : ({ connected: false })
-  readonly property bool connected: !!questflow.connected
-  readonly property var totals: data && data.totals ? data.totals : null
-  readonly property var accounts: data && data.accounts ? data.accounts : []
+  readonly property var signalFeed: data && data.signals ? data.signals : null
+  readonly property var auth: data && data.auth ? data.auth : ({ signedIn: false, state: "signed_out" })
+  readonly property bool connected: !!auth.signedIn
+  readonly property bool configured: !!(data && data.config && data.config.configured)
+  readonly property var positions: data && data.positions ? data.positions : null
+  readonly property var totals: positions && positions.totals ? positions.totals : null
+  readonly property var accounts: positions && positions.accounts ? positions.accounts : []
+  readonly property var rules: data && data.rules ? data.rules : []
+  readonly property var skills: data && data.skills ? data.skills : []
   readonly property var colors: data && data.colors ? data.colors : null
-  readonly property bool mock: !!(data && data.mock)
+  readonly property string connectionLabel: Model.connectionLabel(data)
+  readonly property bool stale: !!(data && data.stale)
+  readonly property int unread: signalFeed && signalFeed.unread ? signalFeed.unread : 0
+  readonly property string disclaimer: signalFeed && signalFeed.disclaimer
+    ? signalFeed.disclaimer : "Not investment advice."
 
   // Symbol search, for adding to the watchlist from the panel.
   property var searchResults: []
@@ -46,32 +62,54 @@ Item {
   readonly property bool searching: searchProcess.running
   property string _pendingSearch: ""
 
-  readonly property int refreshIntervalSec: {
-    var value = parseInt(String(settings && settings.refreshIntervalSec
-      ? settings.refreshIntervalSec : 60), 10)
+  // A rule being drafted from words: the server's structured answer waits
+  // here until the person confirms it.
+  property var ruleDraft: null
+  property string ruleError: ""
+  readonly property bool drafting: draftProcess.running
+
+  readonly property int pollIntervalSec: {
+    var value = parseInt(String(settings && settings.refreshIntervalSec ? settings.refreshIntervalSec : 60), 10)
     return isFinite(value) ? Math.max(15, Math.min(1800, value)) : 60
   }
   readonly property bool notify: !(settings && settings.notify === false)
+  readonly property string quietHours: {
+    var start = settings && settings.quietHoursStart ? String(settings.quietHoursStart) : ""
+    var end = settings && settings.quietHoursEnd ? String(settings.quietHoursEnd) : ""
+    return start && end ? start + "-" + end : "off"
+  }
+  readonly property int dailyCap: {
+    var value = parseInt(String(settings && settings.dailyNotificationCap !== undefined ? settings.dailyNotificationCap : 20), 10)
+    return isFinite(value) ? Math.max(0, Math.min(500, value)) : 20
+  }
+  readonly property string minTier: {
+    var t = settings && settings.minNotificationTier ? String(settings.minNotificationTier) : "important"
+    return (t === "info" || t === "important" || t === "critical") ? t : "important"
+  }
+  readonly property string settingsKey: [notify, quietHours, dailyCap, minTier, pollIntervalSec].join("|")
+  onSettingsKeyChanged: Qt.callLater(pushSettings)
 
-  property string _output: ""
-  property string _error: ""
-  property bool _started: false
-  property bool _refreshPending: false
+  function load() {
+    var parsed = Model.parse(snapshot.text())
+    if (!parsed.data || parsed.data.version !== 2) return
+    root.data = parsed.data
+    root.updatedAt = Date.now()
+  }
 
   function refresh() {
-    if (summaryProcess.running) {
-      _refreshPending = true
-      return
-    }
-    var command = [root.cli, "summary", "--json"]
-    if (root.notify) command.push("--notify")
-    summaryProcess.command = command
-    root._started = false
-    summaryProcess.running = true
+    snapshot.reload()
+    run([root.cli, "daemon", "poke", "--json", "refresh"])
   }
 
   function refreshIfStale() {
+    snapshot.reload()
     if (Date.now() - updatedAt > 15000) refresh()
+  }
+
+  function pushSettings() {
+    run([root.cli, "notify-settings", "--enabled", root.notify ? "on" : "off",
+         "--quiet-hours", root.quietHours, "--daily-cap", String(root.dailyCap),
+         "--min-tier", root.minTier, "--poll-interval", String(root.pollIntervalSec), "--json"])
   }
 
   function search(text) {
@@ -86,7 +124,7 @@ Item {
       _pendingSearch = query
       return
     }
-    searchProcess.command = [root.cli, "tv", "search", "--json", "--", query]
+    searchProcess.command = [root.cli, "watchlist", "search", "--json", "--", query]
     searchProcess.running = true
   }
 
@@ -97,11 +135,9 @@ Item {
     searchError = ""
   }
 
-  // Edits go through the CLI, which owns the file and pokes the bar to
-  // refresh. The removal shows at once rather than a poll later.
-  function addSymbol(symbol) {
-    edit.run([root.cli, "tv", "add", "--", symbol])
-  }
+  // Edits go through the CLI, which calls Questflow and nudges the daemon to
+  // resync. The removal shows at once rather than a sync later.
+  function addSymbol(symbol) { run([root.cli, "watchlist", "add", "--json", "--", symbol]) }
 
   function removeSymbol(symbol) {
     if (data && data.watchlist) {
@@ -112,80 +148,96 @@ Item {
       copy.watchlist.sections = sections.filter(function (sec) { return sec.entries.length > 0 })
       data = copy
     }
-    edit.run([root.cli, "tv", "remove", "--", symbol])
+    run([root.cli, "watchlist", "remove", "--json", "--", symbol])
   }
 
-  function connectQuestflow() { edit.run([root.cli, "login"]) }
-  function disconnectQuestflow() { edit.run([root.cli, "logout"]) }
-
-  function openTradingView(symbol) {
-    Quickshell.execDetached([root.cli, "tv", "open", "--", symbol])
+  function openSignal(row) {
+    if (row.url) Quickshell.execDetached([root.cli, "open", "--", row.url])
+    if (!row.read && root.connected) run([root.cli, "ack", "--json", "--", row.id])
   }
 
-  function openUrl(url) {
-    Quickshell.execDetached([root.cli, "open", "--", url])
+  function toggleRule(row) {
+    if (row.kind === "rule")
+      run([root.cli, "rules", row.on ? "disable" : "enable", "--json", "--", row.id])
+    else
+      run([root.cli, "skills", row.on ? "unsubscribe" : "subscribe", "--json", "--", row.id])
   }
 
-  function openQuestflow() {
-    Quickshell.execDetached([root.cli, "open"])
+  function deleteRule(id) { run([root.cli, "rules", "delete", "--yes", "--json", "--", id]) }
+
+  function draftRule(text) {
+    var words = (text || "").trim()
+    ruleDraft = null
+    ruleError = ""
+    if (!words || draftProcess.running) return
+    draftProcess.command = [root.cli, "rules", "draft", "--json", "--", words]
+    draftProcess.running = true
   }
 
-  Component.onCompleted: refresh()
+  function confirmRule() {
+    if (!ruleDraft) return
+    run([root.cli, "rules", "confirm", "--json", "--digest", ruleDraft.digest, "--", ruleDraft.draftId])
+    ruleDraft = null
+  }
 
-  // A theme switch is a new palette, and the CLI is what reads it.
+  function cancelRule() {
+    ruleDraft = null
+    ruleError = ""
+  }
+
+  // Sign-in waits on the browser for up to five minutes, so it gets its own
+  // process rather than holding up the action queue.
+  readonly property bool signingIn: loginProcess.running
+  function connectQuestflow() {
+    if (loginProcess.running) return
+    root.lastError = ""
+    loginProcess.command = [root.cli, "login", "--json"]
+    loginProcess.running = true
+  }
+  function disconnectQuestflow() { run([root.cli, "logout", "--json"]) }
+  function openUrl(url) { Quickshell.execDetached([root.cli, "open", "--", url]) }
+  function openQuestflow() { Quickshell.execDetached([root.cli, "open"]) }
+
+  function run(command) { actions.run(command) }
+
+  Component.onCompleted: {
+    // Starts the daemon if it is not running (systemd unit, else detached).
+    run([root.cli, "daemon", "ensure"])
+    pushSettings()
+  }
+
+  // A theme switch is a new palette; the daemon re-reads the theme itself,
+  // the nudge only makes it immediate.
   Connections {
     target: Color
     function onThemeShellValuesChanged() { Qt.callLater(root.refresh) }
   }
 
-  Timer {
-    interval: root.refreshIntervalSec * 1000
-    repeat: true
-    running: true
-    onTriggered: root.refresh()
+  FileView {
+    id: snapshot
+    path: root.snapshotPath
+    watchChanges: true
+    onFileChanged: reload()
+    onLoaded: root.load()
   }
 
-  Process {
-    id: summaryProcess
-    running: false
-    command: []
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root._output = text
-    }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root._error = text
-    }
-    // A binary that is not there never starts: Quickshell emits neither
-    // started nor exited, and only drops running.
-    onStarted: {
-      root._started = true
-      root.missing = false
-    }
-    onRunningChanged: {
-      if (running) return
-      if (!root._started) root.missing = true
-      if (root._refreshPending) {
-        root._refreshPending = false
-        Qt.callLater(root.refresh)
-      }
-    }
-    onExited: function (code) {
-      if (code !== 0) {
-        root.lastError = root._error.trim() || "omatrade exited with code " + code
-        return
-      }
-      var parsed = Model.parse(root._output)
-      if (parsed.error || !parsed.data) {
-        root.lastError = parsed.error || "omatrade returned nothing"
-        return
-      }
-      // Replaced only on a good answer: a failed refresh leaves the last
-      // numbers on screen rather than blanking the bar.
-      root.data = parsed.data
-      root.lastError = ""
-      root.updatedAt = Date.now()
+  // The daemon replaces the file atomically, which a file watch can miss;
+  // a cheap re-read covers it. Reading a local file, not polling a server.
+  Timer {
+    interval: 10000
+    repeat: true
+    running: true
+    onTriggered: snapshot.reload()
+  }
+
+  // If the daemon has not written anything for a while, make sure it runs.
+  Timer {
+    interval: 120000
+    repeat: true
+    running: true
+    onTriggered: {
+      var written = root.data && root.data.updatedAt ? root.data.updatedAt : 0
+      if (Date.now() - written > 120000) root.run([root.cli, "daemon", "ensure"])
     }
   }
 
@@ -202,7 +254,7 @@ Item {
         if (searchProcess.query !== root.searchQuery) return
         var parsed = Model.parse(text)
         root.searchResults = parsed.data && parsed.data.results ? parsed.data.results : []
-        root.searchError = parsed.data && parsed.data.error ? parsed.data.error : parsed.error
+        root.searchError = parsed.error
       }
     }
     onRunningChanged: {
@@ -213,26 +265,76 @@ Item {
     }
   }
 
-  // One edit at a time, in order: an add and a remove racing each other on
-  // the same file would leave whichever finished last.
   Process {
-    id: edit
+    id: loginProcess
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parsed = Model.parse(text)
+        root.lastError = parsed.error
+        snapshot.reload()
+      }
+    }
+  }
+
+  Process {
+    id: draftProcess
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parsed = Model.parse(text)
+        if (parsed.error || !parsed.data || !parsed.data.draftId) {
+          root.ruleError = parsed.error || "Questflow could not draft that rule"
+          return
+        }
+        root.ruleDraft = parsed.data
+      }
+    }
+  }
+
+  // One action at a time, in order: an add and a remove racing each other
+  // would leave whichever finished last.
+  Process {
+    id: actions
     running: false
     command: []
     property var queue: []
+    property bool started: false
     function run(command) {
       queue = queue.concat([command])
       if (!running) next()
     }
     function next() {
       if (!queue.length) {
-        root.refresh()
+        snapshot.reload()
         return
       }
       command = queue[0]
       queue = queue.slice(1)
+      started = false
       running = true
     }
-    onRunningChanged: if (!running) Qt.callLater(next)
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parsed = Model.parse(text)
+        root.lastError = parsed.error
+      }
+    }
+    // A binary that is not there never starts: Quickshell emits neither
+    // started nor exited, and only drops running.
+    onStarted: {
+      started = true
+      root.missing = false
+    }
+    onRunningChanged: {
+      if (running) return
+      if (!started) root.missing = true
+      Qt.callLater(next)
+    }
   }
 }

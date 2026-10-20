@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "questflow.omatrade",
   "name": "Omatrade",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "Questflow",
   "license": "MIT",
-  "description": "Your TradingView watchlist, trading news and Questflow positions in the bar.",
+  "description": "Your Questflow watchlist, signals and positions in the bar. Sign in once; nothing else to connect.",
   "kinds": [
     "service",
     "bar-widget"
@@ -16,7 +16,7 @@
   },
   "barWidget": {
     "displayName": "Omatrade",
-    "description": "TradingView watchlist, trading news, and positions across brokers, Hyperliquid and Polymarket.",
+    "description": "Watchlist, signals with alert rules, and read-only positions with liquidation risk, from your Questflow account.",
     "category": "Information",
     "aliases": [
       "trade",
@@ -29,23 +29,54 @@
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 60,
-      "notify": true
+      "notify": true,
+      "quietHoursStart": "",
+      "quietHoursEnd": "",
+      "dailyNotificationCap": 20,
+      "minNotificationTier": "important"
     },
     "schema": [
       {
+        "key": "notify",
+        "type": "boolean",
+        "label": "Desktop notifications for new signals",
+        "defaultValue": true
+      },
+      {
+        "key": "minNotificationTier",
+        "type": "string",
+        "label": "Notify from tier (info, important or critical)",
+        "defaultValue": "important"
+      },
+      {
+        "key": "quietHoursStart",
+        "type": "string",
+        "label": "Quiet hours start (HH:MM, empty for none; critical alerts still notify)",
+        "defaultValue": ""
+      },
+      {
+        "key": "quietHoursEnd",
+        "type": "string",
+        "label": "Quiet hours end (HH:MM)",
+        "defaultValue": ""
+      },
+      {
+        "key": "dailyNotificationCap",
+        "type": "integer",
+        "label": "Most notifications per day (critical alerts not counted)",
+        "min": 0,
+        "max": 500,
+        "step": 5,
+        "defaultValue": 20
+      },
+      {
         "key": "refreshIntervalSec",
         "type": "integer",
-        "label": "Refresh interval (seconds)",
+        "label": "Poll interval while the live stream is down (seconds)",
         "min": 15,
         "max": 1800,
         "step": 15,
         "defaultValue": 60
-      },
-      {
-        "key": "notify",
-        "type": "boolean",
-        "label": "Notify on new signals",
-        "defaultValue": true
       }
     ]
   }

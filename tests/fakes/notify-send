@@ -1,0 +1,3 @@
+#!/bin/sh
+# Test double: appends its arguments, one JSON array per line, to $FAKE_NOTIFY_LOG.
+python3 -c 'import json,sys; open(sys.argv[1],"a").write(json.dumps(sys.argv[2:])+"\n")' "$FAKE_NOTIFY_LOG" "$@"

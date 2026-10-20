@@ -1,0 +1,17 @@
+# Omatrade background client: holds the Questflow event stream for the bar.
+# Installed by `omatrade daemon install`, which fills in @OMATRADE_BIN@.
+[Unit]
+Description=Omatrade: Questflow signals and positions for the Omarchy bar
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart="@OMATRADE_BIN@" daemon run
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

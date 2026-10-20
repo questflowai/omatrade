@@ -1,0 +1,58 @@
+{
+  "_fixture": "DEMO FIXTURE for tests and local development only. These are not real accounts or positions.",
+  "accounts": [
+    {
+      "id": "acct_broker_demo",
+      "venue": "broker",
+      "name": "Demo Broker",
+      "label": "DEMO-0001",
+      "equity": 48210.55,
+      "maintenance_margin": 0,
+      "day_pnl": 312.4,
+      "day_pnl_pct": 0.65,
+      "stale_after_sec": 300,
+      "positions": [
+        {"id": "pos_nvda", "symbol": "NASDAQ:NVDA", "display": "NVDA", "name": "NVIDIA", "kind": "stock",
+         "side": "long", "size": 120, "entry_price": 118.4, "mark_price": 186.2, "liquidation_price": null,
+         "leverage": 1, "unrealized_pnl": 8136.0, "value": 22344.0, "day_change_pct": 1.2,
+         "spark": [180.1, 181.4, 182.0, 183.5, 184.9, 186.2]},
+        {"id": "pos_coin", "symbol": "NASDAQ:COIN", "display": "COIN", "name": "Coinbase", "kind": "stock",
+         "side": "short", "size": 30, "entry_price": 312.0, "mark_price": 298.4, "liquidation_price": null,
+         "leverage": 1, "unrealized_pnl": 408.0, "value": 8952.0, "day_change_pct": -0.8}
+      ]
+    },
+    {
+      "id": "acct_perps_demo",
+      "venue": "hyperliquid",
+      "name": "Demo Perps",
+      "label": "0xdemo…0000",
+      "equity": 9310.0,
+      "maintenance_margin": 2048.2,
+      "day_pnl": -120.5,
+      "day_pnl_pct": -1.28,
+      "stale_after_sec": 120,
+      "positions": [
+        {"id": "pos_btc", "symbol": "HYPERLIQUID:BTC-PERP", "display": "BTC", "name": "5x Long perp",
+         "kind": "perp", "side": "long", "size": 0.85, "entry_price": 98200.0, "mark_price": 112450.0,
+         "liquidation_price": 79500.0, "leverage": 5, "unrealized_pnl": 12112.5, "value": 19116.5},
+        {"id": "pos_eth", "symbol": "HYPERLIQUID:ETH-PERP", "display": "ETH", "name": "3x Short perp",
+         "kind": "perp", "side": "short", "size": 12, "entry_price": 3850.0, "mark_price": 3712.0,
+         "liquidation_price": 3880.0, "leverage": 3, "unrealized_pnl": 1656.0, "value": 14848.0}
+      ]
+    },
+    {
+      "id": "acct_predict_demo",
+      "venue": "polymarket",
+      "name": "Demo Predictions",
+      "label": "0xdemo…0000",
+      "equity": 3480.0,
+      "maintenance_margin": 0,
+      "stale_after_sec": 300,
+      "positions": [
+        {"id": "pos_fed", "symbol": "POLY:FED-DEC", "display": "YES", "name": "Fed cuts rates in December?",
+         "kind": "prediction", "side": "long", "size": 2400, "entry_price": 0.54, "mark_price": 0.61,
+         "leverage": 1, "unrealized_pnl": 168.0, "value": 1464.0}
+      ]
+    }
+  ]
+}

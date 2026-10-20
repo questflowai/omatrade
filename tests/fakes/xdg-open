@@ -1,0 +1,3 @@
+#!/bin/sh
+# Test double: records what would have been opened.
+printf '%s\n' "$1" >> "${FAKE_OPEN_LOG:-/dev/null}"
