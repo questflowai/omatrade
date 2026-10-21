@@ -38,6 +38,11 @@ Panel {
   property bool adding: false
   property int searchIndex: 0
 
+  // Reordering the watchlist by dragging a row's grip: the row being dragged,
+  // and the row index the drop line sits above (watchRows.length is the end).
+  property int dragFrom: -1
+  property int dropIndex: -1
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -166,6 +171,68 @@ Panel {
     })
   }
 
+  function selectSymbol(symbol) {
+    for (var i = 0; i < watchRows.length; i++)
+      if (!watchRows[i].header && watchRows[i].symbol === symbol) { selectedIndex = i; return }
+  }
+
+  // Turn "drop above row `to`" into a move the CLI understands: next to the
+  // nearest symbol, or to the top of a section when the drop lands under its
+  // heading with nothing below.
+  function moveRow(from, to) {
+    var rows = watchRows
+    var row = rows[from]
+    if (!row || row.header || to === from || to === from + 1) return
+    var next = null, prev = null
+    for (var i = to; i < rows.length; i++) if (i !== from) { next = rows[i]; break }
+    for (var j = to - 1; j >= 0; j--) if (j !== from) { prev = rows[j]; break }
+    if (next && !next.header) service.moveSymbol(row.symbol, next.symbol, false)
+    else if (prev && !prev.header) service.moveSymbol(row.symbol, prev.symbol, true)
+    else if (prev && prev.header) service.moveSymbol(row.symbol, "", false, prev.name)
+    else if (next && next.header) service.moveSymbol(row.symbol, "", false, next.name)
+    else return
+    Qt.callLater(function () { root.selectSymbol(row.symbol) })
+  }
+
+  // One place up or down; across a heading it lands at the edge of the
+  // neighbouring section rather than jumping past its first symbol.
+  function stepSymbol(delta) {
+    if (view !== "watchlist" || adding) return
+    var rows = watchRows
+    var row = rows[selectedIndex]
+    if (!row || row.header) return
+    var crossed = false
+    for (var k = selectedIndex + delta; k >= 0 && k < rows.length; k += delta) {
+      if (rows[k].header) { crossed = true; continue }
+      var after = delta > 0 ? !crossed : crossed
+      service.moveSymbol(row.symbol, rows[k].symbol, after)
+      Qt.callLater(function () { root.selectSymbol(row.symbol) })
+      return
+    }
+  }
+
+  function dragStart(i) {
+    dragFrom = i
+    dropIndex = i
+    selectedIndex = i
+  }
+
+  function dragMove(y) {
+    var at = watchRows.length
+    for (var i = 0; i < watchRows.length; i++) {
+      var item = watchRepeater.itemAt(i)
+      if (item && y < item.y + item.height / 2) { at = i; break }
+    }
+    dropIndex = at
+  }
+
+  function dragEnd() {
+    var from = dragFrom, to = dropIndex
+    dragFrom = -1
+    dropIndex = -1
+    if (from >= 0 && to >= 0) moveRow(from, to)
+  }
+
   function startAdding() {
     if (view !== "watchlist") showView("watchlist")
     adding = true
@@ -292,6 +359,8 @@ Panel {
         else if (text === "2") root.showView("signals")
         else if (text === "3") root.showView("positions")
         else if (text === "a" || text === "/" || text === "+") root.startAdding()
+        else if (text === "J") root.stepSymbol(1)
+        else if (text === "K") root.stepSymbol(-1)
       }
 
       ColumnLayout {
@@ -690,9 +759,18 @@ Panel {
           }
 
           ScrollView {
+            id: listScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+
+            // A drag is a reorder, not a scroll.
+            Binding {
+              target: listScroll.contentItem
+              property: "interactive"
+              value: false
+              when: root.dragFrom >= 0
+            }
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
             ColumnLayout {
@@ -782,15 +860,34 @@ Panel {
               // ── Watchlist ──────────────────────────────────────────────
               // Omacharts' row, as close as it can be: ticker and name on
               // the left, price and the move as a pill on the right. A click
-              // is a chart on TradingView; × takes it off the list.
+              // is a chart on TradingView; ⠿ drags it into place; × takes it
+              // off the list.
               Repeater {
+                id: watchRepeater
                 model: root.view === "watchlist" && !root.adding ? root.watchRows : []
 
                 delegate: Item {
                   id: watchRow
-                  readonly property bool lit: index === root.selectedIndex || watchHover.hovered
+                  readonly property bool dragged: root.dragFrom === index
+                  readonly property bool lit: dragged || (root.dragFrom < 0
+                    && (index === root.selectedIndex || watchHover.hovered))
                   Layout.fillWidth: true
                   implicitHeight: modelData && modelData.header ? Style.space(26) : Style.space(40)
+                  opacity: dragged ? 0.5 : 1
+
+                  // Where the dragged row will land: above this row, or below
+                  // the last one.
+                  Rectangle {
+                    visible: root.dragFrom >= 0 && (root.dropIndex === index
+                      || (root.dropIndex === root.watchRows.length && index === root.watchRows.length - 1))
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    y: root.dropIndex === index ? -Style.space(3) : parent.height + Style.space(1)
+                    height: Style.space(2)
+                    radius: height / 2
+                    color: root.palette.accent
+                    z: 2
+                  }
 
                   Text {
                     textFormat: Text.PlainText
@@ -830,7 +927,36 @@ Panel {
                   RowLayout {
                     visible: !modelData || !modelData.header
                     anchors.fill: parent
-                    spacing: Style.space(8)
+                    spacing: Style.space(6)
+
+                    // The grip: the only part of the row that drags, so a
+                    // click stays a click and the list still scrolls.
+                    Item {
+                      id: grip
+                      Layout.fillHeight: true
+                      implicitWidth: Style.space(10)
+                      Text {
+                        textFormat: Text.PlainText
+                        anchors.centerIn: parent
+                        visible: watchRow.lit || gripHover.hovered
+                        text: "⠿"
+                        font.pixelSize: Style.space(12)
+                        color: gripHover.hovered || watchRow.dragged ? root.text : root.muted
+                      }
+                      HoverHandler {
+                        id: gripHover
+                        cursorShape: watchRow.dragged ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                      }
+                      DragHandler {
+                        id: gripDrag
+                        target: null
+                        xAxis.enabled: false
+                        grabPermissions: PointerHandler.CanTakeOverFromAnything
+                        onActiveChanged: active ? root.dragStart(index) : root.dragEnd()
+                        onCentroidChanged: if (active)
+                          root.dragMove(grip.mapToItem(listColumn, 0, centroid.position.y).y)
+                      }
+                    }
 
                     ColumnLayout {
                       Layout.fillWidth: true
@@ -1221,7 +1347,7 @@ Panel {
               Layout.fillWidth: true
               horizontalAlignment: Text.AlignHCenter
               text: root.adding ? "↑/↓ choose    ↵ add    esc cancel"
-                : root.view === "watchlist" ? "←/→ switch    ↵ chart    a add    x remove"
+                : root.view === "watchlist" ? "←/→ switch   ↵ chart   a add   x remove   ⇧J/K move"
                 : root.view === "signals" ? "←/→ switch    ↵ read on TradingView    r refresh"
                 : root.service.connected ? "←/→ switch    ↵ open Questflow    r refresh"
                 : "←/→ switch    ↵ connect Questflow"

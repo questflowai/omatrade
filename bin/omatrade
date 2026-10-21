@@ -56,7 +56,7 @@ NEWS_NOTIFY_URGENCY = 1
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
 def http_json(url, body=None, timeout=6):
-    headers = {"Origin": TV_ORIGIN, "User-Agent": "omatrade/0.2.0"}
+    headers = {"Origin": TV_ORIGIN, "User-Agent": "omatrade/0.3.0"}
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -79,11 +79,26 @@ def load_json(path, default):
         return default
 
 
-def save_json(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(value))
+def private_dir(path):
+    """Our own directory, readable by its owner only, whatever the umask."""
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(path, 0o700)
+
+
+def private_write(path, text):
+    """Write a file only its owner can read: the watchlist and caches say what
+    someone trades. Atomic, and an existing looser file ends up 0600 too."""
+    private_dir(path.parent)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        os.fchmod(f.fileno(), 0o600)
+        f.write(text)
     tmp.replace(path)
+
+
+def save_json(path, value):
+    private_write(path, json.dumps(value))
 
 
 def load_state():
@@ -152,8 +167,7 @@ def tv_symbols():
 
 
 def write_tv_list(sections):
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    TV_WATCHLIST.write_text(format_tv_list(sections))
+    private_write(TV_WATCHLIST, format_tv_list(sections))
 
 
 def tv_quotes(symbols):
@@ -292,6 +306,36 @@ def tv_remove(symbol):
     for sec in sections:
         sec["symbols"] = [x for x in sec["symbols"] if x != sym and x.split(":")[-1] != sym]
     sections = [sec for sec in sections if sec["symbols"]]
+    write_tv_list(sections)
+    return sections
+
+
+def tv_move(symbol, before=None, after=None, section=None):
+    """Move a symbol next to another one, or to the top of a section. Moving
+    next to a symbol in another section moves it into that section."""
+    sym = symbol.upper()
+    anchor = (before or after or "").upper()
+    sections, _ = tv_sections()
+    if not any(sym in sec["symbols"] for sec in sections):
+        raise SystemExit(f"{sym} is not on the watchlist")
+    for sec in sections:
+        if sym in sec["symbols"]:
+            sec["symbols"].remove(sym)
+    placed = False
+    if anchor:
+        for sec in sections:
+            if anchor in sec["symbols"]:
+                at = sec["symbols"].index(anchor) + (1 if after else 0)
+                sec["symbols"].insert(at, sym)
+                placed = True
+                break
+    elif section is not None:
+        target = next((sec for sec in sections if sec["name"].lower() == section.lower()), None)
+        if target is not None:
+            target["symbols"].insert(0, sym)
+            placed = True
+    if not placed:
+        raise SystemExit("nowhere to move it: give --before/--after a symbol on the list, or a --section")
     write_tv_list(sections)
     return sections
 
@@ -579,7 +623,19 @@ def theme_colors():
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 
+def tighten_existing():
+    """Files written before 0.3.0 may be world-readable; make them private."""
+    for directory in (CONFIG_DIR, STATE_DIR):
+        if not directory.is_dir():
+            continue
+        os.chmod(directory, 0o700)
+        for f in directory.iterdir():
+            if f.is_file() and f.stat().st_mode & 0o077:
+                os.chmod(f, 0o600)
+
+
 def summary(now, notify=False):
+    tighten_existing()
     watchlist = tradingview_watchlist()
     items, news_error = news(tv_symbols())
 
@@ -747,6 +803,12 @@ def main(argv=None):
     ta.add_argument("--section")
     tr = tv_sub.add_parser("remove", help="remove a symbol")
     tr.add_argument("symbol")
+    tm = tv_sub.add_parser("move", help="reorder: move a symbol before/after another, or to a section's top")
+    tm.add_argument("symbol")
+    where = tm.add_mutually_exclusive_group(required=True)
+    where.add_argument("--before")
+    where.add_argument("--after")
+    where.add_argument("--section")
     to = tv_sub.add_parser("open", help="open a symbol's chart on TradingView")
     to.add_argument("symbol")
 
@@ -818,9 +880,11 @@ def tv_main(args):
         count = sum(len(sec["symbols"]) for sec in sections)
         print(f"imported {count} symbols in {len(sections)} sections from {source}")
         return 0
-    if tv_cmd in ("add", "remove"):
+    if tv_cmd in ("add", "remove", "move"):
         if tv_cmd == "add":
             tv_add(args.symbol, section=args.section)
+        elif tv_cmd == "move":
+            tv_move(args.symbol, before=args.before, after=args.after, section=args.section)
         else:
             tv_remove(args.symbol)
         poke_bar()

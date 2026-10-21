@@ -8,7 +8,7 @@
 | ![Watchlist](assets/screenshots/watchlist.png) | ![Signals](assets/screenshots/signals.png) | ![Positions](assets/screenshots/positions.png) |
 
 - **Watchlist** — live quotes for the symbols you follow. Search TradingView and add from the
-  panel, remove with one key, click a row to open its chart on TradingView.
+  panel, drag to reorder, remove with one key, click a row to open its chart on TradingView.
 - **Signals** — the latest trading news for your watchlist, newest first. Breaking stories
   arrive as a desktop notification.
 - **Positions** — brokers, Hyperliquid and Polymarket in one place, once you connect
@@ -43,6 +43,7 @@ Click the icon in the bar, or bind a key to `omarchy-shell questflow.omatrade to
 | `↵` | open chart / story / Questflow |
 | `a` or `+` | add a symbol (type, `↑` `↓`, `↵`; `esc` to cancel) |
 | `x` | remove the selected symbol |
+| `⇧J` `⇧K` | move the selected symbol down / up (or drag its ⠿ grip) |
 | `r` | refresh |
 
 IPC: `omarchy-shell questflow.omatrade watchlist|signals|positions|add|toggle|refresh`
@@ -54,6 +55,7 @@ omatrade                      # watchlist, news, positions
 omatrade tv search tencent    # find symbols on TradingView
 omatrade tv add HKEX:700 [--section Asia]
 omatrade tv remove 700
+omatrade tv move --before=NASDAQ:NVDA -- HKEX:700   # or --after= / --section=
 omatrade tv import [file]     # a TradingView export (default: newest in ~/Downloads)
 omatrade news
 omatrade login | logout       # Questflow (demo accounts for now)
@@ -81,6 +83,7 @@ with a note.
 - To fetch quotes and news, the symbols on your watchlist are sent to TradingView, along with
   your IP address. Nothing is sent to Questflow.
 - Only `https://` links are ever opened; text from news feeds is shown as plain text.
+- The watchlist and caches are private to your user (`0700` directories, `0600` files).
 - Plugins run unsandboxed in the Omarchy shell. `omarchy plugin update` shows the diff before
   applying it — read it.
 
