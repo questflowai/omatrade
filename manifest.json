@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "questflow.omatrade",
   "name": "Omatrade",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Questflow",
   "license": "MIT",
-  "description": "Your TradingView watchlist, trading news and Questflow positions in the bar.",
+  "description": "Your TradingView watchlist, trading news and positions in the bar. Powered by Questflow.",
   "kinds": [
     "service",
     "bar-widget"
@@ -16,7 +16,7 @@
   },
   "barWidget": {
     "displayName": "Omatrade",
-    "description": "TradingView watchlist, trading news, and positions across brokers, Hyperliquid and Polymarket.",
+    "description": "TradingView watchlist, trading news, and positions across brokers, Hyperliquid and Polymarket. Powered by Questflow.",
     "category": "Information",
     "aliases": [
       "trade",

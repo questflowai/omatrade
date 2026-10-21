@@ -1,7 +1,7 @@
 # Omatrade
 
 **Your TradingView watchlist, the trading news behind it, and your positions — in the
-[Omarchy](https://omarchy.org) bar.** Made by [Questflow](https://questflow.ai).
+[Omarchy](https://omarchy.org) bar.** Powered by [Questflow](https://questflow.ai/?utm_source=omatrade&utm_medium=omarchy-plugin).
 
 | Watchlist | Signals | Positions |
 |---|---|---|

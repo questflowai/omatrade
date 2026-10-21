@@ -31,6 +31,9 @@ from pathlib import Path
 APP = "omatrade"
 PLUGIN_ID = "questflow.omatrade"
 QUESTFLOW_URL = os.environ.get("OMATRADE_QUESTFLOW_URL", "https://questflow.ai")
+# Every link into Questflow says where it came from, so visits from the bar
+# can be counted.
+QUESTFLOW_UTM = {"utm_source": "omatrade", "utm_medium": "omarchy-plugin"}
 STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / APP
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / APP
 THEME_DIR = Path.home() / ".local/state/omarchy/current/theme"
@@ -56,7 +59,7 @@ NEWS_NOTIFY_URGENCY = 1
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
 def http_json(url, body=None, timeout=6):
-    headers = {"Origin": TV_ORIGIN, "User-Agent": "omatrade/0.3.0"}
+    headers = {"Origin": TV_ORIGIN, "User-Agent": "omatrade/0.3.1"}
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -695,6 +698,11 @@ def poke_bar():
         pass
 
 
+def questflow_link(**params):
+    query = urllib.parse.urlencode({**params, **QUESTFLOW_UTM})
+    return f"{QUESTFLOW_URL.rstrip('/')}/?{query}"
+
+
 def open_url(url):
     subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
@@ -830,7 +838,7 @@ def main(argv=None):
     if cmd == "open":
         target = args.target
         open_url(target if safe_url(target) == target else
-                 QUESTFLOW_URL + (f"/?q={urllib.parse.quote(target)}" if target else ""))
+                 questflow_link(q=target) if target else questflow_link())
         return 0
 
     data = summary(time.time(), notify=getattr(args, "notify", False))
