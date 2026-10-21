@@ -83,6 +83,7 @@ with a note.
 - To fetch quotes and news, the symbols on your watchlist are sent to TradingView, along with
   your IP address. Nothing is sent to Questflow.
 - Only `https://` links are ever opened; text from news feeds is shown as plain text.
+- The watchlist and caches are private to your user (`0700` directories, `0600` files).
 - Plugins run unsandboxed in the Omarchy shell. `omarchy plugin update` shows the diff before
   applying it — read it.
 
