@@ -34,7 +34,9 @@ Requires Omarchy 4 and Python 3.11+ (standard library only, no dependencies).
 
 ## Use
 
-Click the icon in the bar, or bind a key to `omarchy-shell questflow.omatrade toggle`.
+The bar wears the first symbol on the watchlist: its name and price beside the
+icon, with the day's change in the tooltip. Click the icon, or bind a key to
+`omarchy-shell questflow.omatrade toggle`.
 
 | Key | |
 |---|---|

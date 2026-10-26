@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "questflow.omatrade",
   "name": "Omatrade",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "author": "Questflow",
   "license": "MIT",
   "description": "Your TradingView watchlist, trading news and positions in the bar. Powered by Questflow.",

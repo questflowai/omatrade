@@ -103,12 +103,18 @@ Panel {
   readonly property color muted: palette.muted
   readonly property color hover: palette.hover
 
-  // The first quote on the watchlist, for the tooltip.
+  // The first quote on the watchlist: the tooltip, and the number the bar
+  // wears so the top symbol's price is on screen without opening the panel.
   readonly property var headline: {
     for (var i = 0; i < watchRows.length; i++)
       if (!watchRows[i].header && watchRows[i].hasQuote) return watchRows[i]
     return null
   }
+  // Vertical bars have no room for a label; until the first quote arrives
+  // the bar keeps the icon alone.
+  readonly property bool showPrice: headline !== null && !root.vertical
+  readonly property string priceLabel: headline
+    ? headline.display + "  " + Model.formatPrice(headline.last) : ""
 
   // Ticks the "12m" column along while the panel is open.
   property double now: Date.now()
@@ -302,19 +308,37 @@ Panel {
     onTriggered: root.service.search(searchField.text)
   }
 
-  BarIconButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    iconComponent: Component {
-      Item {
-        OmatradeIcon {
-          anchors.centerIn: parent
-          iconSize: Style.space(13)
-          color: root.foreground
-        }
+    labelVisible: false
+    hasVisualContent: true
+    fixedWidth: root.vertical ? -1 : (root.showPrice
+      ? Style.bar.iconSlot + Style.space(6) + priceText.implicitWidth
+      : Style.bar.iconSlot)
+    fixedHeight: root.vertical ? Style.bar.iconSlot : -1
+
+    Row {
+      anchors.centerIn: parent
+      spacing: Style.space(6)
+      OmatradeIcon {
+        anchors.verticalCenter: parent.verticalCenter
+        iconSize: Style.space(13)
+        color: root.foreground
+      }
+      Text {
+        id: priceText
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        visible: root.showPrice
+        text: root.priceLabel
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        color: root.foreground
       }
     }
+
     tooltipText: root.headline
       ? root.headline.display + "  " + Model.formatPrice(root.headline.last)
         + "  " + Model.formatPercent(root.headline.changePct)
