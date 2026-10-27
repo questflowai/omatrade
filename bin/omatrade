@@ -47,6 +47,11 @@ TV_NEWS_URL = "https://news-headlines.tradingview.com/v2/headlines"
 TV_CHART_URL = TV_ORIGIN + "/chart/?symbol="
 TV_QUOTE_TTL_SEC = 45
 TV_NEWS_TTL_SEC = 5 * 60
+# A response over this is not an answer to the question asked: refuse it
+# rather than buffer whatever an endpoint sends. The socket timeout bounds
+# how long a read may take, never how many bytes arrive. Callers already
+# treat a failure here like an unreachable network and keep the cache.
+MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 # News is fetched per symbol, so a long watchlist would be a long wait. The
 # first few are the ones you put at the top for a reason.
 NEWS_SYMBOLS = 12
@@ -59,14 +64,17 @@ NEWS_NOTIFY_URGENCY = 1
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
 def http_json(url, body=None, timeout=6):
-    headers = {"Origin": TV_ORIGIN, "User-Agent": "omatrade/0.3.1"}
+    headers = {"Origin": TV_ORIGIN, "User-Agent": "omatrade/0.3.3"}
     data = None
     if body is not None:
         data = json.dumps(body).encode()
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=data, headers=headers)
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.load(response)
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise ValueError(f"response over {MAX_RESPONSE_BYTES} bytes")
+    return json.loads(raw)
 
 
 def reason(e):
